@@ -97,6 +97,14 @@ pub struct OrderBook<T = ()> {
     /// Minimum quantity increment for orders. When set, order quantities must be
     /// exact multiples of this value. `None` disables validation (default).
     pub(super) lot_size: Option<u64>,
+
+    /// Minimum order size. When set, orders with `total_quantity() < min` are
+    /// rejected. `None` disables validation (default).
+    pub(super) min_order_size: Option<u64>,
+
+    /// Maximum order size. When set, orders with `total_quantity() > max` are
+    /// rejected. `None` disables validation (default).
+    pub(super) max_order_size: Option<u64>,
 }
 
 impl<T> Serialize for OrderBook<T>
@@ -349,6 +357,8 @@ where
             special_order_tracker: SpecialOrderTracker::new(),
             tick_size: None,
             lot_size: None,
+            min_order_size: None,
+            max_order_size: None,
         }
     }
 
@@ -412,6 +422,8 @@ where
             special_order_tracker: SpecialOrderTracker::new(),
             tick_size: None,
             lot_size: None,
+            min_order_size: None,
+            max_order_size: None,
         }
     }
 
@@ -451,6 +463,8 @@ where
             special_order_tracker: SpecialOrderTracker::new(),
             tick_size: None,
             lot_size: None,
+            min_order_size: None,
+            max_order_size: None,
         }
     }
 
@@ -513,6 +527,46 @@ where
     #[inline]
     pub fn lot_size(&self) -> Option<u64> {
         self.lot_size
+    }
+
+    /// Set the minimum order size.
+    ///
+    /// Orders with `total_quantity() < min_order_size` are rejected with
+    /// `OrderBookError::OrderSizeOutOfRange`.
+    ///
+    /// # Arguments
+    /// - `size`: Minimum allowed order quantity
+    pub fn set_min_order_size(&mut self, size: u64) {
+        self.min_order_size = Some(size);
+    }
+
+    /// Set the maximum order size.
+    ///
+    /// Orders with `total_quantity() > max_order_size` are rejected with
+    /// `OrderBookError::OrderSizeOutOfRange`.
+    ///
+    /// # Arguments
+    /// - `size`: Maximum allowed order quantity
+    pub fn set_max_order_size(&mut self, size: u64) {
+        self.max_order_size = Some(size);
+    }
+
+    /// Returns the configured minimum order size, if any.
+    ///
+    /// `None` means no minimum size validation (default).
+    #[must_use]
+    #[inline]
+    pub fn min_order_size(&self) -> Option<u64> {
+        self.min_order_size
+    }
+
+    /// Returns the configured maximum order size, if any.
+    ///
+    /// `None` means no maximum size validation (default).
+    #[must_use]
+    #[inline]
+    pub fn max_order_size(&self) -> Option<u64> {
+        self.max_order_size
     }
 
     /// Get the symbol of this order book

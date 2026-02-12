@@ -555,6 +555,27 @@ where
             }
         }
 
+        // Min/max order size validation
+        let qty = order.total_quantity();
+        if let Some(min) = self.min_order_size
+            && qty < min
+        {
+            return Err(OrderBookError::OrderSizeOutOfRange {
+                quantity: qty,
+                min: Some(min),
+                max: self.max_order_size,
+            });
+        }
+        if let Some(max) = self.max_order_size
+            && qty > max
+        {
+            return Err(OrderBookError::OrderSizeOutOfRange {
+                quantity: qty,
+                min: self.min_order_size,
+                max: Some(max),
+            });
+        }
+
         if self.has_expired(&order) {
             return Err(OrderBookError::InvalidOperation {
                 message: "Order has already expired".to_string(),

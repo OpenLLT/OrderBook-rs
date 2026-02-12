@@ -527,4 +527,297 @@ mod tests {
             "Should fail on tick size first: {msg}"
         );
     }
+
+    // =========================================================================
+    // Min/Max Order Size Validation Tests
+    // =========================================================================
+
+    // --- Setters and getters ---
+
+    #[test]
+    fn test_set_min_order_size() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        assert_eq!(book.min_order_size(), None);
+        book.set_min_order_size(10);
+        assert_eq!(book.min_order_size(), Some(10));
+    }
+
+    #[test]
+    fn test_set_max_order_size() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        assert_eq!(book.max_order_size(), None);
+        book.set_max_order_size(1000);
+        assert_eq!(book.max_order_size(), Some(1000));
+    }
+
+    // --- Backward compatibility: no min/max ---
+
+    #[test]
+    fn test_no_min_max_accepts_any_quantity() {
+        let book: OrderBook<()> = OrderBook::new("BTC/USD");
+        let order = make_standard_order(1000, 1, Side::Buy);
+        assert!(book.add_order(order).is_ok());
+    }
+
+    // --- Min order size ---
+
+    #[test]
+    fn test_min_order_size_rejects_below() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_min_order_size(10);
+        let order = make_standard_order(1000, 5, Side::Buy);
+        let result = book.add_order(order);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("out of range"),
+            "Error should mention out of range: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_min_order_size_accepts_equal() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_min_order_size(10);
+        let order = make_standard_order(1000, 10, Side::Buy);
+        assert!(book.add_order(order).is_ok());
+    }
+
+    #[test]
+    fn test_min_order_size_accepts_above() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_min_order_size(10);
+        let order = make_standard_order(1000, 50, Side::Buy);
+        assert!(book.add_order(order).is_ok());
+    }
+
+    // --- Max order size ---
+
+    #[test]
+    fn test_max_order_size_rejects_above() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_max_order_size(100);
+        let order = make_standard_order(1000, 150, Side::Buy);
+        let result = book.add_order(order);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("out of range"),
+            "Error should mention out of range: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_max_order_size_accepts_equal() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_max_order_size(100);
+        let order = make_standard_order(1000, 100, Side::Buy);
+        assert!(book.add_order(order).is_ok());
+    }
+
+    #[test]
+    fn test_max_order_size_accepts_below() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_max_order_size(100);
+        let order = make_standard_order(1000, 50, Side::Buy);
+        assert!(book.add_order(order).is_ok());
+    }
+
+    // --- Only min set, no max ---
+
+    #[test]
+    fn test_only_min_set_large_quantity_accepted() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_min_order_size(10);
+        let order = make_standard_order(1000, 999_999, Side::Buy);
+        assert!(book.add_order(order).is_ok());
+    }
+
+    // --- Only max set, no min ---
+
+    #[test]
+    fn test_only_max_set_small_quantity_accepted() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_max_order_size(1000);
+        let order = make_standard_order(1000, 1, Side::Buy);
+        assert!(book.add_order(order).is_ok());
+    }
+
+    // --- Both min and max set ---
+
+    #[test]
+    fn test_min_and_max_within_range() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_min_order_size(10);
+        book.set_max_order_size(100);
+        let order = make_standard_order(1000, 50, Side::Buy);
+        assert!(book.add_order(order).is_ok());
+    }
+
+    #[test]
+    fn test_min_and_max_below_min() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_min_order_size(10);
+        book.set_max_order_size(100);
+        let order = make_standard_order(1000, 5, Side::Buy);
+        assert!(book.add_order(order).is_err());
+    }
+
+    #[test]
+    fn test_min_and_max_above_max() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_min_order_size(10);
+        book.set_max_order_size(100);
+        let order = make_standard_order(1000, 150, Side::Buy);
+        assert!(book.add_order(order).is_err());
+    }
+
+    // --- Iceberg total quantity checked ---
+
+    #[test]
+    fn test_max_order_size_iceberg_total_above_max() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_max_order_size(50);
+        // default iceberg: visible=10, hidden=90 → total=100 > 50
+        let order = make_iceberg_order(1000, Side::Buy);
+        assert!(book.add_order(order).is_err());
+    }
+
+    #[test]
+    fn test_min_order_size_iceberg_total_accepted() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_min_order_size(50);
+        // default iceberg: visible=10, hidden=90 → total=100 >= 50
+        let order = make_iceberg_order(1000, Side::Buy);
+        assert!(book.add_order(order).is_ok());
+    }
+
+    // --- Post-only order ---
+
+    #[test]
+    fn test_min_order_size_rejects_post_only() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_min_order_size(200);
+        // make_post_only_order uses quantity=100
+        let order = make_post_only_order(1000, Side::Buy);
+        assert!(book.add_order(order).is_err());
+    }
+
+    // --- Sell side ---
+
+    #[test]
+    fn test_min_order_size_rejects_sell_below() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_min_order_size(10);
+        let order = make_standard_order(1000, 5, Side::Sell);
+        assert!(book.add_order(order).is_err());
+    }
+
+    // --- Dynamic changes ---
+
+    #[test]
+    fn test_set_min_max_changes_validation() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+
+        // No limits — any quantity accepted
+        let order = make_standard_order(1000, 1, Side::Buy);
+        assert!(book.add_order(order).is_ok());
+
+        // Set min — 1 would now fail
+        book.set_min_order_size(10);
+        let order = make_standard_order(2000, 1, Side::Sell);
+        assert!(book.add_order(order).is_err());
+
+        // Set max — large orders fail
+        book.set_max_order_size(100);
+        let order = make_standard_order(3000, 200, Side::Buy);
+        assert!(book.add_order(order).is_err());
+
+        // Within range works
+        let order = make_standard_order(3000, 50, Side::Buy);
+        assert!(book.add_order(order).is_ok());
+    }
+
+    // --- add_limit_order convenience method ---
+
+    #[test]
+    fn test_add_limit_order_respects_min_order_size() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_min_order_size(10);
+        let result = book.add_limit_order(
+            OrderId::new_uuid(),
+            1000,
+            5,
+            Side::Buy,
+            TimeInForce::Gtc,
+            None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_add_limit_order_respects_max_order_size() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_max_order_size(100);
+        let result = book.add_limit_order(
+            OrderId::new_uuid(),
+            1000,
+            150,
+            Side::Buy,
+            TimeInForce::Gtc,
+            None,
+        );
+        assert!(result.is_err());
+    }
+
+    // --- Error display ---
+
+    #[test]
+    fn test_order_size_out_of_range_error_display() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_min_order_size(10);
+        book.set_max_order_size(100);
+        let order = make_standard_order(1000, 5, Side::Buy);
+        let err = book.add_order(order).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("5"), "Should contain quantity: {msg}");
+        assert!(msg.contains("10"), "Should contain min: {msg}");
+        assert!(msg.contains("100"), "Should contain max: {msg}");
+    }
+
+    // --- Combined tick + lot + min/max ---
+
+    #[test]
+    fn test_all_validations_pass() {
+        let mut book: OrderBook<()> = OrderBook::with_tick_size("BTC/USD", 100);
+        book.set_lot_size(10);
+        book.set_min_order_size(10);
+        book.set_max_order_size(1000);
+        let order = make_standard_order(1000, 100, Side::Buy);
+        assert!(book.add_order(order).is_ok());
+    }
+
+    #[test]
+    fn test_tick_fails_before_min_max() {
+        let mut book: OrderBook<()> = OrderBook::with_tick_size("BTC/USD", 100);
+        book.set_min_order_size(10);
+        let order = make_standard_order(150, 50, Side::Buy);
+        let result = book.add_order(order);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("tick size"), "Should fail on tick: {msg}");
+    }
+
+    #[test]
+    fn test_lot_fails_before_min_max() {
+        let mut book: OrderBook<()> = OrderBook::new("BTC/USD");
+        book.set_lot_size(10);
+        book.set_min_order_size(5);
+        // quantity 7 fails lot (not multiple of 10), but is above min 5
+        let order = make_standard_order(1000, 7, Side::Buy);
+        let result = book.add_order(order);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("lot size"), "Should fail on lot: {msg}");
+    }
 }
